@@ -1,0 +1,52 @@
+# ── Results and generated files ────────────────────────────────────────
+results/
+logs/
+
+# ── Python cache ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# ── Jupyter ─────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── HPC logs ────────────────────────────────────────────────────────────
+*.out
+*.err
+slurm-*.out
+
+# ── Distribution / packaging ─────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+*.egg
+
+# ── Virtual environments ─────────────────────────────────────────────────
+.env
+.venv
+env/
+venv/
+qteg_env/
+
+# ── OS files ─────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── IDE / editor ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Temporary files ───────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.bak
