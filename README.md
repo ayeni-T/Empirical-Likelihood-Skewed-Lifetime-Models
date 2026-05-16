@@ -40,14 +40,14 @@ The framework is further extended to survival probability inference via a
 logit-transformed Wald benchmark and empirical likelihood intervals for the
 survival function S(t₀), and to joint bivariate confidence regions for the
 parameter vector. A simulation study with N = 5,000 replications across three
-hazard scenarios, four sample sizes, and three nominal levels shows that AJEL
+hazard scenarios, four sample sizes, and three nominal levels show that AJEL
 achieves near-nominal coverage across sample sizes and hazard regimes, while
 Wald intervals over-cover and EJEL under-covers at small n. The methods are
-illustrated on four real lifetime datasets — bladder cancer remission times,
+illustrated on four real lifetime datasets, bladder cancer remission times,
 Boeing 720 aircraft failure times, malignant melanoma survival, and guinea pig
-survival — with the most pronounced differences arising in the heavily skewed
+survival  with the most pronounced differences arising in the heavily skewed
 guinea pig dataset (n = 72, skewness = 2.54), where AJEL intervals for the shape
-parameter are approximately 67% wider than the Wald interval, reflecting genuine
+parameters are approximately 67% wider than the Wald interval, reflecting genuine
 inferential uncertainty underrepresented by the symmetric normal approximation.
 
 ---
@@ -59,7 +59,7 @@ inferential uncertainty underrepresented by the symmetric normal approximation.
    without matrix inversion or high-dimensional optimisation.
 
 2. **Three interval methods** — JEL, AJEL, and EJEL confidence intervals are
-   derived for both the shape parameter α and rate parameter β of the QTEG
+   derived for both the shape parameter α and the rate parameter β of the QTEG
    distribution, with full asymptotic theory established.
 
 3. **Survival function inference** — The JEL framework is extended to inference
