@@ -1,13 +1,13 @@
 """
 QTEG_JEL_plot_results.py
 ========================
-Generates paper-ready and supplementary figures from merged simulation
+Generates figures and supplementary figures from the merged simulation
 results and real data analysis.
 
-Each figure is saved as both PDF (vector, for journal submission) and
+Each figure is saved as both PDF  and
 PNG (300 dpi, for Word documents / preview).
 
-PAPER FIGURES (4 total):
+FIGURES (4 total):
   fig_jel_sim_alpha.pdf/.png   -- CP for alpha:  1x3 panels
   fig_jel_sim_beta.pdf/.png    -- CP for beta:   1x3 panels
   fig_jel_sim_surv.pdf/.png    -- CP for S(t0):  1x3 panels
@@ -68,7 +68,7 @@ DS_KEYS   = [
     "DS4: Guinea Pig Survival (n=72)",
 ]
 
-# ── Global RC — journal quality ────────────────────────────────────────
+# ── Global RC ────────────────────────────────────────
 plt.rcParams.update({
     "font.family":            "serif",
     "font.serif":             ["Times New Roman", "DejaVu Serif", "serif"],
@@ -146,7 +146,7 @@ def _finish_ax(ax, xticks, ylim=None):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# PAPER FIGURES 1–3  Simulation coverage probability
+#  FIGURES 1–3  Simulation coverage probability
 # ══════════════════════════════════════════════════════════════════════
 
 def plot_sim_cp(cp_cols, ylabel, suptitle, stem,
@@ -231,7 +231,7 @@ plot_sim_cp(
 
 
 # ══════════════════════════════════════════════════════════════════════
-# PAPER FIGURE 4  Real data CI line plots
+# FIGURE 4  Real data CI line plots
 # 3 rows (alpha / beta / S(t0))  x  2 cols (CI midpoint | CI width)
 # ══════════════════════════════════════════════════════════════════════
 
