@@ -1,5 +1,5 @@
 """
-QTEG_JEL_Arctic.py  (v4 — full covariance delta method for NA survival CI)
+QTEG_JEL_Arctic.py  (full covariance delta method for NA survival CI)
 ===========================================================================
 Arctic HPC simulation for Paper 2: JEL inference for QTEG.
 
@@ -15,13 +15,6 @@ Statistical core ported directly from QTEG_JEL_Analysis_v2_fix.py:
   - na_survival_ci       : logit-transformed Wald CI for S(t0)
                            uses full 2x2 Hessian covariance (cov_ab)
   - ajel_ratio           : BAEL — Emerson & Owen (2009) two-obs version
-
-v4 changes vs v3:
-  - qteg_mle now returns cov_ab = Cov(alpha_hat, beta_hat) from Hessian
-  - na_survival_ci now accepts cov_ab and uses the full delta-method formula:
-      Var(S(t0)) = (dS/da)^2 Var(a) + (dS/db)^2 Var(b) + 2(dS/da)(dS/db)Cov(a,b)
-  - run_block and run_real_data pass cov_ab through to na_survival_ci
-  - Resume-from-checkpoint logic retained from v3
 
 Arctic structure:
   - 36-block SLURM array
