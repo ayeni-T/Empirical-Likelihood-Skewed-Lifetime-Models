@@ -1,20 +1,19 @@
 """
-QTEG_JEL_Arctic.py  (full covariance delta method for NA survival CI)
+QTEG_JEL_Arctic.py  
 ===========================================================================
 Arctic HPC simulation for Paper 2: JEL inference for QTEG.
 
-Statistical core ported directly from QTEG_JEL_Analysis_v2_fix.py:
+Statistical core:
   - qteg_mle        : full L-BFGS-B optimisation with Hessian SEs + cov_ab
   - compute_pseudovalues : single LOO pass, stores loo_alpha/loo_beta
   - _solve_lambda        : Newton-Raphson Lagrange solver   [Eq. 22]
-  - jel_ratio / ajel_ratio / ejel_ratio                    [Eq. 21,25,29]
+  - jel_ratio / ajel_ratio                                 [Eq. 21,25]
   - _ci_from_ratio       : grid inversion, 1000-point search
-  - jel_ci / ajel_ci / ejel_ci                             [Eq. 32-34]
+  - jel_ci / ajel_ci                                       [Eq. 32-33]
   - survival_pseudovalues_from_pv : reuses stored LOO MLEs [Eq. 39]
-  - survival CI          : grid search over (0,1)           [Eq. 41-43]
-  - na_survival_ci       : logit-transformed Wald CI for S(t0)
-                           uses full 2x2 Hessian covariance (cov_ab)
-  - ajel_ratio           : BAEL — Emerson & Owen (2009) two-obs version
+  - survival_jel_ci : grid search over full pseudo-value range [Eq. 41-42]
+  - na_survival_ci  : logit-transformed Wald CI for S(t0)
+                      uses full 2x2 Hessian covariance (cov_ab)
 
 Arctic structure:
   - 36-block SLURM array
@@ -57,7 +56,6 @@ NULL_SCENARIOS = [
 NOMINALS     = [0.90, 0.95, 0.99]
 SAMPLE_SIZES = [30, 50, 100, 200]
 
-# t0 = median of QTEG under each null scenario
 T0_VALS = {
     (1.5, 0.5): float((gammaincinv(1.5, 0.5) / 0.5)**2),
     (2.0, 1.0): float((gammaincinv(2.0, 0.5) / 1.0)**2),
@@ -71,24 +69,14 @@ def qteg_logpdf(y, alpha, beta):
             + ((alpha-2)/2.0)*np.log(y) - beta*np.sqrt(y))
 
 def qteg_sf(y, alpha, beta):
-    """Survival function S(y) = 1 - CDF(y)."""
     return gammaincc(alpha, beta * np.sqrt(np.maximum(y, 1e-300)))
 
 def qteg_sample(alpha, beta, n, rng):
     return rng.gamma(alpha, 1.0/beta, n) ** 2
 
-# ── MLE (full L-BFGS-B with Hessian SEs and covariance) ──────────────
+# ── MLE ───────────────────────────────────────────────────────────────
 
 def qteg_mle(y):
-    """
-    MLE for QTEG(alpha, beta).
-    Multi-start L-BFGS-B optimisation.  [Eq. 23-26 of paper]
-
-    Returns dict with keys:
-      alpha, beta, se_alpha, se_beta, cov_ab, logL, n
-    cov_ab = Cov(alpha_hat, beta_hat) from the full 2x2 Hessian inverse.
-    Returns None on failure.
-    """
     y  = np.asarray(y, float)
     sy = np.mean(np.sqrt(y))
 
@@ -116,7 +104,6 @@ def qteg_mle(y):
     ah, bh = best_res.x
     logL   = -best_val
 
-    # Full 2x2 Hessian — retains off-diagonal for delta method
     h = 1e-5
     try:
         H = np.zeros((2, 2))
@@ -130,7 +117,7 @@ def qteg_mle(y):
         cov    = np.linalg.inv(H)
         se_a   = float(np.sqrt(max(cov[0,0], 0.0)))
         se_b   = float(np.sqrt(max(cov[1,1], 0.0)))
-        cov_ab = float(cov[0,1])          # Cov(alpha_hat, beta_hat)
+        cov_ab = float(cov[0,1])
     except Exception:
         se_a = se_b = np.nan
         cov_ab = 0.0
@@ -138,14 +125,9 @@ def qteg_mle(y):
     return dict(alpha=ah, beta=bh, se_alpha=se_a, se_beta=se_b,
                 cov_ab=cov_ab, logL=logL, n=len(y))
 
-# ── Pseudo-values (single LOO pass) ──────────────────────────────────
+# ── Pseudo-values ─────────────────────────────────────────────────────
 
 def compute_pseudovalues(y):
-    """
-    Jackknife pseudo-values for alpha and beta.  [Eq. 14-15]
-    Stores loo_alpha and loo_beta for reuse in survival pseudo-values.
-    Returns dict or None.
-    """
     y    = np.asarray(y, float)
     n    = len(y)
     fit0 = qteg_mle(y)
@@ -169,8 +151,8 @@ def compute_pseudovalues(y):
         else:
             loo_alpha[i] = fit_i['alpha']
             loo_beta[i]  = fit_i['beta']
-        pv_alpha[i] = n*ah - (n-1)*loo_alpha[i]   # Eq. 14
-        pv_beta[i]  = n*bh - (n-1)*loo_beta[i]    # Eq. 15
+        pv_alpha[i] = n*ah - (n-1)*loo_alpha[i]
+        pv_beta[i]  = n*bh - (n-1)*loo_beta[i]
 
     return dict(alpha=ah, beta=bh, se_alpha=fit0['se_alpha'],
                 se_beta=fit0['se_beta'], cov_ab=fit0['cov_ab'],
@@ -181,7 +163,6 @@ def compute_pseudovalues(y):
 # ── Lagrange solver and ratio functions ───────────────────────────────
 
 def _solve_lambda(V, theta0, max_iter=200, tol=1e-12):
-    """Newton-Raphson solver for JEL constraint.  [Eq. 22]"""
     W = V - theta0
     n = len(W)
 
@@ -214,7 +195,6 @@ def _solve_lambda(V, theta0, max_iter=200, tol=1e-12):
 
 
 def jel_ratio(V, theta0):
-    """JEL log-likelihood ratio.  [Eq. 21]"""
     try:
         lam = _solve_lambda(V, theta0)
         W   = V - theta0
@@ -225,16 +205,8 @@ def jel_ratio(V, theta0):
 
 def ajel_ratio(V, theta0):
     """
-    BAEL log-likelihood ratio following Emerson & Owen (2009).
-    Adds TWO symmetric artificial observations to expand the convex
-    hull in both directions.
-
-    Artificial observations:
-      g_{n+1} = theta0 + a_n * sigma_hat   (upper)
-      g_{n+2} = theta0 - a_n * sigma_hat   (lower)
-
-    where a_n = max(1, log(n)/2) [Chen 2008] and
-    sigma_hat = std(V) is the scale of the pseudo-values.
+    AJEL log-likelihood ratio — Emerson & Owen (2009) two-obs version.
+    Used for alpha and beta inference only.
     """
     n       = len(V)
     a_n     = max(1.0, np.log(n) / 2.0)
@@ -250,14 +222,13 @@ def ajel_ratio(V, theta0):
 
 
 def ejel_ratio(V, theta0, alpha_hat):
-    """EJEL log-likelihood ratio.  [Eq. 29-31]"""
+    """EJEL — kept for theory sections, not called in simulation."""
     def hcn(t):
         ell = jel_ratio(V, t) if (np.min(V) < t < np.max(V)) else np.inf
         if np.isinf(ell):
             return np.inf
         gamma = 1.0 + ell / (2.0 * len(V))
         return alpha_hat + gamma * (t - alpha_hat)
-
     lo = np.min(V) + 1e-8
     hi = np.max(V) - 1e-8
     try:
@@ -267,11 +238,10 @@ def ejel_ratio(V, theta0, alpha_hat):
     except (ValueError, RuntimeError):
         return np.inf
 
-# ── CI from ratio (grid inversion) ───────────────────────────────────
+# ── CI from ratio ─────────────────────────────────────────────────────
 
 def _ci_from_ratio(ratio_fn, V, nominal, theta_hat,
                    search_half_width=None):
-    """Grid inversion of any EL ratio statistic.  [Eq. 32-34]"""
     cutoff = chi2.ppf(nominal, df=1)
     if search_half_width is None:
         sd = np.std(V, ddof=1)
@@ -290,7 +260,6 @@ def _ci_from_ratio(ratio_fn, V, nominal, theta_hat,
 
 
 def na_ci(theta_hat, se, nominal):
-    """Normal approximation (Wald) CI."""
     z = np.sqrt(chi2.ppf(nominal, df=1))
     return (theta_hat - z*se, theta_hat + z*se)
 
@@ -300,43 +269,24 @@ def jel_ci(V, nominal, theta_hat):
 def ajel_ci(V, nominal, theta_hat):
     return _ci_from_ratio(ajel_ratio, V, nominal, theta_hat)
 
-def ejel_ci(V, nominal, theta_hat):
-    ratio_fn = lambda v, t: ejel_ratio(v, t, theta_hat)
-    return _ci_from_ratio(ratio_fn, V, nominal, theta_hat)
-
-# ── Survival pseudo-values ────────────────────────────────────────────
+# ── Survival ──────────────────────────────────────────────────────────
 
 def na_survival_ci(ah, bh, se_a, se_b, t0, nominal, cov_ab=0.0):
     """
     Wald (NA) CI for S(t0) via logit-transformed delta method.
-
-    Uses the FULL 2x2 covariance matrix including Cov(alpha_hat, beta_hat):
-      Var(S(t0)) = (dS/da)^2 Var(a)
-                 + (dS/db)^2 Var(b)
-                 + 2 (dS/da)(dS/db) Cov(a,b)        [full delta method]
-
-    Ignoring cov_ab (as in v3) underestimates se_psi when alpha and beta
-    are positively correlated in the MLE, producing over-wide CIs and
-    inflated coverage for S(t0).
-
-    Logit transformation guarantees CI bounds remain in (0,1).
-    Reference: Meeker & Escobar (1998), Statistical Methods for
-               Reliability Data, Wiley.
+    Uses full 2x2 covariance matrix.
     """
     h = 1e-5
-    dS_da   = (qteg_sf(t0, ah+h, bh) - qteg_sf(t0, ah-h, bh)) / (2*h)
-    dS_db   = (qteg_sf(t0, ah, bh+h) - qteg_sf(t0, ah, bh-h)) / (2*h)
+    dS_da = (qteg_sf(t0, ah+h, bh) - qteg_sf(t0, ah-h, bh)) / (2*h)
+    dS_db = (qteg_sf(t0, ah, bh+h) - qteg_sf(t0, ah, bh-h)) / (2*h)
 
-    # Full delta method variance — includes off-diagonal covariance term
     var_psi = ((dS_da * se_a)**2
                + (dS_db * se_b)**2
                + 2.0 * dS_da * dS_db * cov_ab)
     se_psi  = float(np.sqrt(max(var_psi, 0.0)))
 
-    psi_hat = float(qteg_sf(t0, ah, bh))
-    z       = float(np.sqrt(chi2.ppf(nominal, df=1)))
-
-    # Logit-scale transformation — guarantees CI in (0,1)
+    psi_hat  = float(qteg_sf(t0, ah, bh))
+    z        = float(np.sqrt(chi2.ppf(nominal, df=1)))
     psi_c    = float(np.clip(psi_hat, 1e-6, 1.0 - 1e-6))
     logit    = np.log(psi_c / (1.0 - psi_c))
     se_logit = se_psi / (psi_c * (1.0 - psi_c))
@@ -346,10 +296,6 @@ def na_survival_ci(ah, bh, se_a, se_b, t0, nominal, cov_ab=0.0):
 
 
 def survival_pseudovalues_from_pv(pv_dict, t0):
-    """
-    Survival pseudo-values reusing LOO MLEs already in pv_dict.
-    Avoids a second full LOO pass.  [Eq. 39]
-    """
     ah        = pv_dict['alpha']
     bh        = pv_dict['beta']
     loo_alpha = pv_dict['loo_alpha']
@@ -365,20 +311,32 @@ def survival_pseudovalues_from_pv(pv_dict, t0):
 
 def survival_jel_ci(V_surv, nominal):
     """
-    JEL and AJEL CIs for S(t0) via grid search over (0,1).  [Eq. 41-43]
+    JEL CI for S(t0). Grid searches the full pseudo-value convex hull
+    rather than restricting to (0,1), which corrects interval length
+    inflation caused by pseudo-values extending outside (0,1).
+    Results clipped to [0,1] since S(t0) is a probability.
+    AJEL is not included for survival: diagnostics confirmed that
+    over-coverage of AJEL for S(t0) is structural at small n and
+    cannot be corrected by tuning. NA and JEL are reported instead.
     """
+    V_surv = np.asarray(V_surv, float)
     cutoff = chi2.ppf(nominal, df=1)
-    grid   = np.linspace(1e-6, 1.0 - 1e-6, 1000)
-    jvals  = np.array([jel_ratio(V_surv,  g) for g in grid])
-    avals  = np.array([ajel_ratio(V_surv, g) for g in grid])
+
+    vmin, vmax = np.min(V_surv), np.max(V_surv)
+    eps  = 1e-8 * max(1.0, vmax - vmin)
+    grid = np.linspace(vmin + eps, vmax - eps, 3000)
+
+    jvals = np.array([jel_ratio(V_surv, g) for g in grid])
 
     def _extract(vals):
-        inside = grid[vals <= cutoff]
+        inside = grid[np.isfinite(vals) & (vals <= cutoff)]
         if len(inside) < 2:
             return (np.nan, np.nan)
-        return (float(inside[0]), float(inside[-1]))
+        lo = max(0.0, float(inside[0]))
+        hi = min(1.0, float(inside[-1]))
+        return lo, hi
 
-    return _extract(jvals), _extract(avals)
+    return _extract(jvals)
 
 # ── Checkpoint helpers ────────────────────────────────────────────────
 
@@ -389,7 +347,7 @@ def save_partial(block_id, counts, rep, n_sim, meta):
                **{k: (100*v/nc if k.startswith('cp_') else v/nc)
                   for k, v in counts.items() if k != 'n_conv'},
                'n_conv': counts['n_conv'],
-               '_raw_counts': counts,           # raw integers for resume
+               '_raw_counts': counts,
                'timestamp': datetime.now().isoformat()}
     fname = os.path.join(RESULTS_DIR, f"block_{block_id:02d}_partial.json")
     with open(fname, 'w') as f:
@@ -437,17 +395,20 @@ def run_block(block_id, n_sim=N_SIM_DEFAULT):
     print(f"t0={t0:.4f}  S(t0)={psi_true:.4f}  seed={seed}  n_sim={n_sim}")
     print(f"{'='*60}")
 
+    # EJEL removed; AJEL retained for alpha/beta only (v5)
     counts = {k: 0 for k in [
         'n_conv',
-        'cp_na_a','al_na_a','cp_jel_a','al_jel_a',
-        'cp_ajel_a','al_ajel_a','cp_ejel_a','al_ejel_a',
-        'cp_na_b','al_na_b','cp_jel_b','al_jel_b',
-        'cp_ajel_b','al_ajel_b','cp_ejel_b','al_ejel_b',
-        'cp_na_s','al_na_s',
-        'cp_jel_s','al_jel_s','cp_ajel_s','al_ajel_s',
+        'cp_na_a',  'al_na_a',
+        'cp_jel_a', 'al_jel_a',
+        'cp_ajel_a','al_ajel_a',
+        'cp_na_b',  'al_na_b',
+        'cp_jel_b', 'al_jel_b',
+        'cp_ajel_b','al_ajel_b',
+        'cp_na_s',  'al_na_s',
+        'cp_jel_s', 'al_jel_s',
     ]}
 
-    # ── Resume from checkpoint if one exists ─────────────────────────
+    # ── Resume from checkpoint ────────────────────────────────────────
     resume_from = 0
     partial_path = os.path.join(RESULTS_DIR, f"block_{block_id:02d}_partial.json")
     if os.path.exists(partial_path):
@@ -465,8 +426,7 @@ def run_block(block_id, n_sim=N_SIM_DEFAULT):
                 else:
                     print(f"  WARNING: Checkpoint missing keys -- starting from rep 0")
             else:
-                print(f"  NOTE: Partial file has no _raw_counts -- starting from rep 0")
-                print(f"  (Expected for checkpoints saved before v4)")
+                print(f"  NOTE: No _raw_counts in checkpoint -- starting from rep 0")
         except Exception as e:
             print(f"  WARNING: Could not load checkpoint ({e}) -- starting from rep 0")
 
@@ -476,7 +436,6 @@ def run_block(block_id, n_sim=N_SIM_DEFAULT):
         rng = np.random.default_rng(seed + rep)
         y   = qteg_sample(alpha_t, beta_t, n, rng)
 
-        # ── Pseudo-values (single LOO pass) ───────────────────────────
         pv = compute_pseudovalues(y)
         if pv is None:
             continue
@@ -486,11 +445,11 @@ def run_block(block_id, n_sim=N_SIM_DEFAULT):
         bh     = pv['beta']
         se_a   = pv['se_alpha']
         se_b   = pv['se_beta']
-        cov_ab = pv['cov_ab']          # Cov(alpha_hat, beta_hat)
+        cov_ab = pv['cov_ab']
         pva    = pv['pv_alpha']
         pvb    = pv['pv_beta']
 
-        # ── NA intervals for alpha and beta ───────────────────────────
+        # ── NA for alpha and beta ─────────────────────────────────────
         if np.isfinite(se_a):
             lo, hi = na_ci(ah, se_a, nominal)
             if lo > hi: lo, hi = hi, lo
@@ -502,7 +461,7 @@ def run_block(block_id, n_sim=N_SIM_DEFAULT):
             if lo <= beta_t <= hi: counts['cp_na_b'] += 1
             counts['al_na_b'] += hi - lo
 
-        # ── JEL / AJEL / EJEL for alpha ───────────────────────────────
+        # ── JEL and AJEL for alpha ────────────────────────────────────
         for fn, key in [(jel_ci,'jel_a'), (ajel_ci,'ajel_a')]:
             lo, hi = fn(pva, nominal, ah)
             if np.isfinite(lo) and np.isfinite(hi):
@@ -510,13 +469,7 @@ def run_block(block_id, n_sim=N_SIM_DEFAULT):
                 if lo <= alpha_t <= hi: counts[f'cp_{key}'] += 1
                 counts[f'al_{key}'] += hi - lo
 
-        lo, hi = ejel_ci(pva, nominal, ah)
-        if np.isfinite(lo) and np.isfinite(hi):
-            if lo > hi: lo, hi = hi, lo
-            if lo <= alpha_t <= hi: counts['cp_ejel_a'] += 1
-            counts['al_ejel_a'] += hi - lo
-
-        # ── JEL / AJEL / EJEL for beta ────────────────────────────────
+        # ── JEL and AJEL for beta ─────────────────────────────────────
         for fn, key in [(jel_ci,'jel_b'), (ajel_ci,'ajel_b')]:
             lo, hi = fn(pvb, nominal, bh)
             if np.isfinite(lo) and np.isfinite(hi):
@@ -524,16 +477,9 @@ def run_block(block_id, n_sim=N_SIM_DEFAULT):
                 if lo <= beta_t <= hi: counts[f'cp_{key}'] += 1
                 counts[f'al_{key}'] += hi - lo
 
-        lo, hi = ejel_ci(pvb, nominal, bh)
-        if np.isfinite(lo) and np.isfinite(hi):
-            if lo > hi: lo, hi = hi, lo
-            if lo <= beta_t <= hi: counts['cp_ejel_b'] += 1
-            counts['al_ejel_b'] += hi - lo
-
-        # ── Survival: NA (full delta method), JEL, AJEL ──────────────
+        # ── Survival: NA and JEL only (AJEL removed for survival) ────
         sv = survival_pseudovalues_from_pv(pv, t0)
 
-        # NA survival CI — now passes cov_ab for full delta method
         if np.isfinite(se_a) and np.isfinite(se_b):
             nlo, nhi = na_survival_ci(ah, bh, se_a, se_b, t0, nominal,
                                       cov_ab=cov_ab)
@@ -542,18 +488,13 @@ def run_block(block_id, n_sim=N_SIM_DEFAULT):
                 if nlo <= psi_true <= nhi: counts['cp_na_s'] += 1
                 counts['al_na_s'] += nhi - nlo
 
-        # JEL and AJEL survival CIs via grid search over (0,1)
-        (jlo, jhi), (alo, ahi) = survival_jel_ci(sv['V'], nominal)
+        jlo, jhi = survival_jel_ci(sv['V'], nominal)
         if np.isfinite(jlo) and np.isfinite(jhi):
             if jlo > jhi: jlo, jhi = jhi, jlo
             if jlo <= psi_true <= jhi: counts['cp_jel_s'] += 1
             counts['al_jel_s'] += jhi - jlo
-        if np.isfinite(alo) and np.isfinite(ahi):
-            if alo > ahi: alo, ahi = ahi, alo
-            if alo <= psi_true <= ahi: counts['cp_ajel_s'] += 1
-            counts['al_ajel_s'] += ahi - alo
 
-        # ── Progress logging + partial checkpoint ─────────────────────
+        # ── Progress + checkpoint ─────────────────────────────────────
         if (rep + 1) % CHECKPOINT_EVERY == 0:
             elapsed = time.time() - t_start
             rate    = elapsed / (rep + 1 - resume_from)
@@ -563,47 +504,38 @@ def run_block(block_id, n_sim=N_SIM_DEFAULT):
                   f"conv={counts['n_conv']:>5}  "
                   f"elapsed={elapsed:>6.0f}s  "
                   f"remain~{remain:>6.0f}s  "
-                  f"CP(α)JEL={100*counts['cp_jel_a']/nc:>5.1f}%  "
+                  f"CP(S)NA={100*counts['cp_na_s']/nc:>5.1f}%  "
                   f"CP(S)JEL={100*counts['cp_jel_s']/nc:>5.1f}%  "
-                  f"CP(S)NA={100*counts['cp_na_s']/nc:>5.1f}%")
+                  f"CP(α)AJEL={100*counts['cp_ajel_a']/nc:>5.1f}%")
             save_partial(block_id, counts, rep, n_sim, meta)
 
     result = finalise(block_id, counts, n_sim, meta)
 
-    # Block summary
     print(f"\n--- Block {block_id:02d} complete ---")
     print(f"  Conv: {counts['n_conv']}/{n_sim} "
           f"({100*counts['n_conv']/n_sim:.1f}%)")
     print(f"  CP(α): NA={result['cp_na_a']:.2f}  "
           f"JEL={result['cp_jel_a']:.2f}  "
-          f"AJEL={result['cp_ajel_a']:.2f}  "
-          f"EJEL={result['cp_ejel_a']:.2f}")
+          f"AJEL={result['cp_ajel_a']:.2f}")
     print(f"  AL(α): NA={result['al_na_a']:.4f}  "
           f"JEL={result['al_jel_a']:.4f}  "
-          f"AJEL={result['al_ajel_a']:.4f}  "
-          f"EJEL={result['al_ejel_a']:.4f}")
+          f"AJEL={result['al_ajel_a']:.4f}")
     print(f"  CP(β): NA={result['cp_na_b']:.2f}  "
           f"JEL={result['cp_jel_b']:.2f}  "
-          f"AJEL={result['cp_ajel_b']:.2f}  "
-          f"EJEL={result['cp_ejel_b']:.2f}")
+          f"AJEL={result['cp_ajel_b']:.2f}")
     print(f"  AL(β): NA={result['al_na_b']:.4f}  "
           f"JEL={result['al_jel_b']:.4f}  "
-          f"AJEL={result['al_ajel_b']:.4f}  "
-          f"EJEL={result['al_ejel_b']:.4f}")
+          f"AJEL={result['al_ajel_b']:.4f}")
     print(f"  CP(S): NA={result['cp_na_s']:.2f}  "
-          f"JEL={result['cp_jel_s']:.2f}  "
-          f"AJEL={result['cp_ajel_s']:.2f}")
+          f"JEL={result['cp_jel_s']:.2f}")
     print(f"  AL(S): NA={result['al_na_s']:.4f}  "
-          f"JEL={result['al_jel_s']:.4f}  "
-          f"AJEL={result['al_ajel_s']:.4f}")
+          f"JEL={result['al_jel_s']:.4f}")
     print(f"  Total time: {time.time()-t_start:.0f}s")
-    saved = os.path.join(RESULTS_DIR, f"block_{block_id:02d}.json")
-    print(f"  Saved: {saved}")
+    print(f"  Saved: {os.path.join(RESULTS_DIR, f'block_{block_id:02d}.json')}")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # REAL DATA APPLICATION
-# Datasets: DS1 Bladder Cancer, DS2 Boeing 720, DS3 Melanoma, DS4 Guinea Pig
 # ══════════════════════════════════════════════════════════════════════
 
 import re as _re
@@ -674,13 +606,8 @@ DATASET_T0 = {
 
 
 def run_real_data(nominal=0.95):
-    """
-    For each dataset: compute MLE Wald CIs, JEL, AJEL, EJEL CIs for alpha
-    and beta, and NA/JEL/AJEL CIs for the survival function at t0.
-    NA survival CI uses full covariance delta method (cov_ab).
-    """
     print("\n\n" + "="*90)
-    print("TABLE 5 -- REAL DATA: MLE ESTIMATES AND JEL-BASED CONFIDENCE INTERVALS")
+    print("REAL DATA: MLE ESTIMATES AND JEL-BASED CONFIDENCE INTERVALS")
     print(f"  Nominal level: {int(nominal*100)}%")
     print("="*90)
 
@@ -697,21 +624,18 @@ def run_real_data(nominal=0.95):
             print("  MLE failed. Skipping.")
             continue
 
-        ah, bh   = fit['alpha'], fit['beta']
-        se_a     = fit['se_alpha']
-        se_b     = fit['se_beta']
-        cov_ab   = fit['cov_ab']
+        ah, bh = fit['alpha'], fit['beta']
+        se_a   = fit['se_alpha']
+        se_b   = fit['se_beta']
+        cov_ab = fit['cov_ab']
 
-        print(f"  MLE:  alpha_hat = {ah:.4f} (SE = {se_a:.4f}),  "
-              f"beta_hat = {bh:.4f} (SE = {se_b:.4f}),  "
-              f"Cov = {cov_ab:.6f}")
-        print(f"  logL = {fit['logL']:.4f}")
+        print(f"  MLE:  alpha_hat={ah:.4f} (SE={se_a:.4f})  "
+              f"beta_hat={bh:.4f} (SE={se_b:.4f})  Cov={cov_ab:.6f}")
 
-        print(f"  Computing {len(y)} leave-one-out MLEs ...", end=' ', flush=True)
+        print(f"  Computing {len(y)} LOO MLEs ...", end=' ', flush=True)
         t_start = time.time()
         pv = compute_pseudovalues(y)
-        elapsed = time.time() - t_start
-        print(f"done ({elapsed:.1f}s)")
+        print(f"done ({time.time()-t_start:.1f}s)")
 
         if pv is None:
             print("  Pseudo-value computation failed. Skipping.")
@@ -720,65 +644,49 @@ def run_real_data(nominal=0.95):
         pva = pv['pv_alpha']
         pvb = pv['pv_beta']
 
-        # CIs for alpha
+        # CIs for alpha — NA, JEL, AJEL only (EJEL removed)
         na_a   = na_ci(ah, se_a, nominal)
         jel_a  = jel_ci(pva, nominal, ah)
         ajel_a = ajel_ci(pva, nominal, ah)
-        ejel_a = ejel_ci(pva, nominal, ah)
 
-        # CIs for beta
+        # CIs for beta — NA, JEL, AJEL only
         na_b   = na_ci(bh, se_b, nominal)
         jel_b  = jel_ci(pvb, nominal, bh)
         ajel_b = ajel_ci(pvb, nominal, bh)
-        ejel_b = ejel_ci(pvb, nominal, bh)
 
-        # Survival CIs — NA uses full cov_ab
+        # Survival CIs — NA and JEL only (AJEL removed for survival)
         sv_pv  = survival_pseudovalues_from_pv(pv, t0)
-        Vs     = sv_pv['V']
-        cutoff = chi2.ppf(nominal, df=1)
-        grid_s = np.linspace(1e-6, 1.0 - 1e-6, 1000)
-        jvals  = np.array([jel_ratio(Vs, g)  for g in grid_s])
-        avals  = np.array([ajel_ratio(Vs, g) for g in grid_s])
-
-        def _extr(vals):
-            inside = grid_s[vals <= cutoff]
-            return (float(inside[0]), float(inside[-1])) \
-                   if len(inside) >= 2 else (np.nan, np.nan)
-
-        na_s = na_survival_ci(ah, bh, se_a, se_b, t0, nominal,
-                               cov_ab=cov_ab)
+        na_s   = na_survival_ci(ah, bh, se_a, se_b, t0, nominal, cov_ab=cov_ab)
+        jlo, jhi = survival_jel_ci(sv_pv['V'], nominal)
+        jel_s  = (jlo, jhi)
 
         sv = dict(psi_hat=sv_pv['psi_hat'],
                   psi_jack=sv_pv['psi_jack'],
-                  na=na_s, jel=_extr(jvals), ajel=_extr(avals))
+                  na=na_s, jel=jel_s)
 
         def fmt_ci(ci):
             if np.isnan(ci[0]):
                 return "    [  ---  ,   ---  ]"
             return f"    [{ci[0]:7.4f}, {ci[1]:7.4f}]  (width={ci[1]-ci[0]:.4f})"
 
-        print(f"\n  Confidence intervals for alpha ({int(nominal*100)}%):")
-        print(f"    NA:    {fmt_ci(na_a)}")
-        print(f"    JEL:   {fmt_ci(jel_a)}")
-        print(f"    AJEL:  {fmt_ci(ajel_a)}")
-        print(f"    EJEL:  {fmt_ci(ejel_a)}")
+        print(f"\n  CIs for alpha ({int(nominal*100)}%):")
+        print(f"    NA:   {fmt_ci(na_a)}")
+        print(f"    JEL:  {fmt_ci(jel_a)}")
+        print(f"    AJEL: {fmt_ci(ajel_a)}")
 
-        print(f"\n  Confidence intervals for beta ({int(nominal*100)}%):")
-        print(f"    NA:    {fmt_ci(na_b)}")
-        print(f"    JEL:   {fmt_ci(jel_b)}")
-        print(f"    AJEL:  {fmt_ci(ajel_b)}")
-        print(f"    EJEL:  {fmt_ci(ejel_b)}")
+        print(f"\n  CIs for beta ({int(nominal*100)}%):")
+        print(f"    NA:   {fmt_ci(na_b)}")
+        print(f"    JEL:  {fmt_ci(jel_b)}")
+        print(f"    AJEL: {fmt_ci(ajel_b)}")
 
-        psi_hat = sv['psi_hat']
-        print(f"\n  Survival function S({t0}) = {psi_hat:.4f}")
-        print(f"  NA  CI for S({t0}):   {fmt_ci(sv['na'])}")
-        print(f"  JEL CI for S({t0}):   {fmt_ci(sv['jel'])}")
-        print(f"  AJEL CI for S({t0}):  {fmt_ci(sv['ajel'])}")
+        print(f"\n  Survival S({t0}) = {sv['psi_hat']:.4f}")
+        print(f"    NA  CI: {fmt_ci(sv['na'])}")
+        print(f"    JEL CI: {fmt_ci(sv['jel'])}")
 
         all_results[ds_name] = dict(
             fit=fit, pv=pv,
-            ci_alpha=dict(na=na_a, jel=jel_a, ajel=ajel_a, ejel=ejel_a),
-            ci_beta=dict(na=na_b, jel=jel_b, ajel=ajel_b, ejel=ejel_b),
+            ci_alpha=dict(na=na_a, jel=jel_a, ajel=ajel_a),
+            ci_beta=dict(na=na_b, jel=jel_b, ajel=ajel_b),
             survival=sv, t0=t0
         )
 
@@ -786,7 +694,6 @@ def run_real_data(nominal=0.95):
 
 
 def run_and_save_real_data(nominal=0.95):
-    """Run real data application and save results to JSON."""
     import json as _json
     import numpy as _np
 
@@ -852,7 +759,7 @@ def merge_results():
     print(f"\n{'Sc':<4} {'Nom':>5} {'n':>4}  "
           f"{'CP_α NA':>8} {'CP_α JEL':>9} {'CP_α AJEL':>10}  "
           f"{'AL_α JEL':>9}  {'CP_S NA':>8} {'CP_S JEL':>9}")
-    print("-"*80)
+    print("-"*85)
     for r in sorted(results,
                     key=lambda x: (x['scenario'], x['nominal'], x['n'])):
         print(f"Sc.{r['scenario']} {r['nominal']:>5.0%} {r['n']:>4}  "
@@ -866,19 +773,13 @@ def merge_results():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='QTEG JEL simulation — Arctic HPC (v4)')
-    parser.add_argument('--block', type=int, default=None,
-                        help='Block index 0-35')
-    parser.add_argument('--merge', action='store_true',
-                        help='Merge all completed block results')
-    parser.add_argument('--n_sim', type=int, default=N_SIM_DEFAULT,
-                        help='Replications per block (default 5000)')
-    parser.add_argument('--realdata', action='store_true',
-                        help='Run real data application and save JSON')
-    parser.add_argument('--nominal', type=float, default=0.95,
-                        help='Nominal level for real data (default 0.95)')
-    parser.add_argument('--test', action='store_true',
-                        help='Quick test: block 0, 20 reps')
+        description='QTEG JEL simulation — Arctic HPC (v5)')
+    parser.add_argument('--block',    type=int,   default=None)
+    parser.add_argument('--merge',    action='store_true')
+    parser.add_argument('--n_sim',    type=int,   default=N_SIM_DEFAULT)
+    parser.add_argument('--realdata', action='store_true')
+    parser.add_argument('--nominal',  type=float, default=0.95)
+    parser.add_argument('--test',     action='store_true')
     args = parser.parse_args()
 
     if args.realdata:
@@ -892,9 +793,8 @@ if __name__ == '__main__':
         run_block(args.block, n_sim=args.n_sim)
     else:
         print("Usage:")
-        print("  Test:         python QTEG_JEL_Arctic.py --test")
-        print("  Single block: python QTEG_JEL_Arctic.py --block 0")
-        print("  Custom reps:  python QTEG_JEL_Arctic.py --block 0 --n_sim 100")
-        print("  Merge:        python QTEG_JEL_Arctic.py --merge")
-        print("  Via SLURM:    sbatch qteg_jel_array.sh")
-        print("  Real data:    python QTEG_JEL_Arctic.py --realdata")
+        print("  Test:      python QTEG_JEL_Arctic.py --test")
+        print("  Block:     python QTEG_JEL_Arctic.py --block 0")
+        print("  Merge:     python QTEG_JEL_Arctic.py --merge")
+        print("  Real data: python QTEG_JEL_Arctic.py --realdata")
+        print("  Via SLURM: sbatch qteg_jel_array.sh")
