@@ -1,11 +1,7 @@
 """
 QTEG_JEL_plot_results.py
 ========================
-Generates figures and supplementary figures from the merged simulation
-results and real data analysis.
-
-Each figure is saved as both PDF  and
-PNG (300 dpi, for Word documents / preview).
+Generates figures from merged simulation results and real data analysis.
 
 FIGURES (4 total):
   fig_jel_sim_alpha.pdf/.png   -- CP for alpha:  1x3 panels
@@ -19,11 +15,6 @@ SUPPLEMENTARY FIGURES:
   fig_jel_survival_al.pdf/.png              -- AL for S(t0)
   fig_jel_alpha_cp_all_nominals.pdf/.png    -- CP at 90/95/99% for alpha
   fig_jel_survival_cp_all_nominals.pdf/.png -- CP at 90/95/99% for S(t0)
-
-Run after merge and realdata:
-  python QTEG_JEL_Arctic.py --merge
-  python QTEG_JEL_Arctic.py --realdata
-  python QTEG_JEL_plot_results.py
 
 Authors: Taiwo Michael Ayeni and Yichuan Zhao
 Georgia State University, 2026
@@ -60,15 +51,15 @@ SC_LABELS = {
     3: r"Sc.$\,$3  ($\alpha=3.0,\;\beta=2.0$)",
 }
 
-DS_TICKS  = ["DS1", "DS2", "DS3", "DS4"]
-DS_KEYS   = [
+DS_TICKS = ["DS1", "DS2", "DS3", "DS4"]
+DS_KEYS  = [
     "DS1: Bladder Cancer (n=128)",
     "DS2: Boeing 720 (n=213)",
     "DS3: Malignant Melanoma (n=205)",
     "DS4: Guinea Pig Survival (n=72)",
 ]
 
-# ── Global RC ────────────────────────────────────────
+# ── Global RC ─────────────────────────────────────────────────────────
 plt.rcParams.update({
     "font.family":            "serif",
     "font.serif":             ["Times New Roman", "DejaVu Serif", "serif"],
@@ -102,19 +93,20 @@ plt.rcParams.update({
     "ps.fonttype":            42,
 })
 
-# ── Method palette ─────────────────────────────────────────────────────
-METHODS      = ["NA", "JEL", "AJEL", "EJEL"]
-SURV_METHODS = ["NA", "JEL", "AJEL"]
+# ── Method palettes ───────────────────────────────────────────────────
+# Alpha/beta: NA, JEL, AJEL
+METHODS      = ["NA", "JEL", "AJEL"]
+# Survival: NA, JEL only (AJEL removed — structural over-coverage)
+SURV_METHODS = ["NA", "JEL"]
 
 METHOD_COLORS  = {
     "NA":   "#2171b5",
     "JEL":  "#238b45",
     "AJEL": "#d94801",
-    "EJEL": "#6a3d9a",
 }
-METHOD_STYLES  = {"NA": "-",  "JEL": "--", "AJEL": "-.", "EJEL": ":"}
-METHOD_MARKERS = {"NA": "s",  "JEL": "o",  "AJEL": "^",  "EJEL": "D"}
-METHOD_MS      = {"NA": 4.5,  "JEL": 4.5,  "AJEL": 5.0,  "EJEL": 4.0}
+METHOD_STYLES  = {"NA": "-",  "JEL": "--", "AJEL": "-."}
+METHOD_MARKERS = {"NA": "s",  "JEL": "o",  "AJEL": "^"}
+METHOD_MS      = {"NA": 4.5,  "JEL": 4.5,  "AJEL": 5.0}
 
 
 def _legend_handles(methods):
@@ -146,7 +138,7 @@ def _finish_ax(ax, xticks, ylim=None):
 
 
 # ══════════════════════════════════════════════════════════════════════
-#  FIGURES 1–3  Simulation coverage probability
+# FIGURES 1–3  Simulation coverage probability
 # ══════════════════════════════════════════════════════════════════════
 
 def plot_sim_cp(cp_cols, ylabel, suptitle, stem,
@@ -156,17 +148,9 @@ def plot_sim_cp(cp_cols, ylabel, suptitle, stem,
 
     sub = df[df["nominal"] == nominal].copy()
 
-    fig, axes = plt.subplots(
-        1, 3,
-        figsize=(6.5, 2.8),
-        sharey=True,
-    )
-    fig.subplots_adjust(
-        left=0.10, right=0.97,
-        bottom=0.18,
-        top=0.82,
-        wspace=0.10,
-    )
+    fig, axes = plt.subplots(1, 3, figsize=(6.5, 2.8), sharey=True)
+    fig.subplots_adjust(left=0.10, right=0.97,
+                        bottom=0.18, top=0.82, wspace=0.10)
 
     for ax, sc in zip(axes, SCENARIOS_NUM):
         dsc = sub[sub["scenario"] == sc].sort_values("n")
@@ -185,18 +169,14 @@ def plot_sim_cp(cp_cols, ylabel, suptitle, stem,
         _finish_ax(ax, NS, ylim=(62, 101))
 
     axes[0].set_ylabel(ylabel)
-    axes[0].legend(
-        handles=_legend_handles(methods),
-        loc="lower right",
-        fontsize=7.5,
-    )
+    axes[0].legend(handles=_legend_handles(methods),
+                   loc="lower right", fontsize=7.5)
     axes[2].annotate(
         f"nominal {int(nominal*100)}%",
         xy=(NS[-1], nominal * 100),
         xytext=(4, 2), textcoords="offset points",
         fontsize=6.5, va="bottom", color="0.35",
     )
-
     fig.suptitle(suptitle, x=0.535, y=0.97, fontsize=10)
     _save(fig, stem)
 
@@ -204,8 +184,7 @@ def plot_sim_cp(cp_cols, ylabel, suptitle, stem,
 print("Paper figures:")
 
 plot_sim_cp(
-    cp_cols={"NA": "cp_na_a", "JEL": "cp_jel_a",
-             "AJEL": "cp_ajel_a", "EJEL": "cp_ejel_a"},
+    cp_cols={"NA": "cp_na_a", "JEL": "cp_jel_a", "AJEL": "cp_ajel_a"},
     ylabel=r"Coverage probability (%) — $\hat{\alpha}$",
     suptitle=r"Figure 1.  Coverage probability for $\alpha$  (nominal = 95%)",
     stem="fig_jel_sim_alpha",
@@ -213,8 +192,7 @@ plot_sim_cp(
 )
 
 plot_sim_cp(
-    cp_cols={"NA": "cp_na_b", "JEL": "cp_jel_b",
-             "AJEL": "cp_ajel_b", "EJEL": "cp_ejel_b"},
+    cp_cols={"NA": "cp_na_b", "JEL": "cp_jel_b", "AJEL": "cp_ajel_b"},
     ylabel=r"Coverage probability (%) — $\hat{\beta}$",
     suptitle=r"Figure 2.  Coverage probability for $\beta$  (nominal = 95%)",
     stem="fig_jel_sim_beta",
@@ -222,7 +200,7 @@ plot_sim_cp(
 )
 
 plot_sim_cp(
-    cp_cols={"NA": "cp_na_s", "JEL": "cp_jel_s", "AJEL": "cp_ajel_s"},
+    cp_cols={"NA": "cp_na_s", "JEL": "cp_jel_s"},
     ylabel=r"Coverage probability (%) — $S(t_0)$",
     suptitle=r"Figure 3.  Coverage probability for $S(t_0)$  (nominal = 95%)",
     stem="fig_jel_sim_surv",
@@ -232,25 +210,23 @@ plot_sim_cp(
 
 # ══════════════════════════════════════════════════════════════════════
 # FIGURE 4  Real data CI line plots
-# 3 rows (alpha / beta / S(t0))  x  2 cols (CI midpoint | CI width)
 # ══════════════════════════════════════════════════════════════════════
 
 def plot_realdata_ci(outfile_stem, nominal=0.95):
     if not os.path.exists(REALDATA_FILE):
         print(f"  WARNING: {REALDATA_FILE} not found — skipping Figure 4.")
-        print("  Run: python QTEG_JEL_Arctic.py --realdata  first.")
         return
 
     with open(REALDATA_FILE) as fh:
         rd = json.load(fh)
 
     ROWS = [
-        dict(label=r"$\alpha$",   pe_src="fit",      pe_key="alpha",
-             ci_src="ci_alpha",   methods=METHODS),
-        dict(label=r"$\beta$",    pe_src="fit",      pe_key="beta",
-             ci_src="ci_beta",    methods=METHODS),
-        dict(label=r"$S(t_0)$",  pe_src="survival", pe_key="psi_hat",
-             ci_src="survival",   methods=SURV_METHODS),
+        dict(label=r"$\alpha$",  pe_src="fit",      pe_key="alpha",
+             ci_src="ci_alpha",  methods=METHODS),
+        dict(label=r"$\beta$",   pe_src="fit",      pe_key="beta",
+             ci_src="ci_beta",   methods=METHODS),
+        dict(label=r"$S(t_0)$", pe_src="survival", pe_key="psi_hat",
+             ci_src="survival",  methods=SURV_METHODS),
     ]
 
     def _get(entry, row, method):
@@ -267,20 +243,12 @@ def plot_realdata_ci(outfile_stem, nominal=0.95):
             return np.nan, np.nan, np.nan
 
     n_rows = len(ROWS)
-    n_ds   = len(DS_KEYS)
-    xs     = np.arange(n_ds)
+    xs     = np.arange(len(DS_KEYS))
 
-    fig, axes = plt.subplots(
-        n_rows, 2,
-        figsize=(6.5, 7.2),      # ── slightly taller to give legend room
-    )
-    fig.subplots_adjust(
-        left=0.12, right=0.97,
-        bottom=0.13,             # ── increased: space for x-label + legend
-        top=0.91,
-        hspace=0.55,
-        wspace=0.38,
-    )
+    fig, axes = plt.subplots(n_rows, 2, figsize=(6.5, 7.2))
+    fig.subplots_adjust(left=0.12, right=0.97,
+                        bottom=0.17, top=0.91,
+                        hspace=0.55, wspace=0.38)
 
     col_titles = ["CI midpoint and spread", "CI width"]
     for c, ct in enumerate(col_titles):
@@ -300,20 +268,16 @@ def plot_realdata_ci(outfile_stem, nominal=0.95):
             pe_vals = []
             for m in methods:
                 lo, hi, pe = _get(entry, row, m)
-                mid_data[m].append((lo + hi) / 2 if np.isfinite(lo) else np.nan)
-                wid_data[m].append(hi - lo       if np.isfinite(lo) else np.nan)
+                mid_data[m].append((lo+hi)/2 if np.isfinite(lo) else np.nan)
+                wid_data[m].append(hi-lo     if np.isfinite(lo) else np.nan)
                 pe_vals.append(pe)
             pe_data.append(np.nanmean(pe_vals))
 
-        # ── left panel ────────────────────────────────────────────────
         for m in methods:
             mids = np.array(mid_data[m])
             wids = np.array(wid_data[m])
-            half = wids / 2
-            ax_mid.fill_between(
-                xs, mids - half, mids + half,
-                alpha=0.08, color=METHOD_COLORS[m],
-            )
+            ax_mid.fill_between(xs, mids-wids/2, mids+wids/2,
+                                alpha=0.08, color=METHOD_COLORS[m])
             ax_mid.plot(xs, mids,
                         color=METHOD_COLORS[m],
                         linestyle=METHOD_STYLES[m],
@@ -321,19 +285,15 @@ def plot_realdata_ci(outfile_stem, nominal=0.95):
                         markersize=METHOD_MS[m],
                         linewidth=1.5)
 
-        ax_mid.plot(xs, pe_data,
-                    color="black", linestyle="-",
-                    linewidth=0.9, marker="|",
-                    markersize=6, markeredgewidth=1.1,
-                    label="MLE", zorder=5)
-
+        ax_mid.plot(xs, pe_data, color="black", linestyle="-",
+                    linewidth=0.9, marker="|", markersize=6,
+                    markeredgewidth=1.1, label="MLE", zorder=5)
         ax_mid.set_ylabel(row["label"], fontsize=9, labelpad=5)
         ax_mid.set_xticks(xs)
         ax_mid.set_xticklabels(DS_TICKS, fontsize=8)
         ax_mid.tick_params(axis="both", which="major", length=3, width=0.6)
         ax_mid.yaxis.set_major_locator(mticker.MaxNLocator(nbins=5, prune="both"))
 
-        # ── right panel ───────────────────────────────────────────────
         for m in methods:
             wids = np.array(wid_data[m])
             ax_wid.plot(xs, wids,
@@ -342,43 +302,32 @@ def plot_realdata_ci(outfile_stem, nominal=0.95):
                         marker=METHOD_MARKERS[m],
                         markersize=METHOD_MS[m],
                         linewidth=1.5)
-
         ax_wid.set_xticks(xs)
         ax_wid.set_xticklabels(DS_TICKS, fontsize=8)
         ax_wid.tick_params(axis="both", which="major", length=3, width=0.6)
         ax_wid.yaxis.set_major_locator(mticker.MaxNLocator(nbins=5, prune="both"))
 
-        # x-axis label on bottom row only
         if r == n_rows - 1:
-            ax_mid.set_xlabel("Dataset", fontsize=9, labelpad=8)  # ── increased labelpad
-            ax_wid.set_xlabel("Dataset", fontsize=9, labelpad=8)  # ── increased labelpad
+            ax_mid.set_xlabel("Dataset", fontsize=9, labelpad=8)
+            ax_wid.set_xlabel("Dataset", fontsize=9, labelpad=8)
 
-    # ── shared legend — placed above the x-axis labels ────────────────
+    # Legend: show all METHODS + MLE (AJEL shown for alpha/beta rows)
     leg_handles = _legend_handles(METHODS)
     leg_handles += [
         Line2D([0], [0], color="black", linestyle="-",
                marker="|", markersize=6, markeredgewidth=1.1,
                linewidth=0.9, label="MLE")
     ]
-    fig.legend(
-        handles=leg_handles,
-        loc="lower center",
-        ncol=len(leg_handles),
-        fontsize=8,
-        framealpha=0.9,
-        edgecolor="0.75",
-        bbox_to_anchor=(0.535, 0.035),  # ── raised from 0.01 to 0.035
-        handlelength=2.2,
-    )
+    fig.legend(handles=leg_handles, loc="lower center",
+               ncol=len(leg_handles), fontsize=8,
+               framealpha=0.9, edgecolor="0.75",
+               bbox_to_anchor=(0.535, 0.07), handlelength=2.2)
 
     fig.suptitle(
         f"Figure 4.  Real data confidence intervals  (nominal = {int(nominal*100)}%)\n"
         r"Left: CI midpoint $\pm\frac{1}{2}$width (shaded).  Right: CI width.",
-        x=0.535, y=0.99,
-        fontsize=9,
-        linespacing=1.6,
+        x=0.535, y=0.99, fontsize=9, linespacing=1.6,
     )
-
     _save(fig, outfile_stem)
 
 
@@ -389,24 +338,15 @@ plot_realdata_ci("fig_jel_realdata")
 # SUPPLEMENTARY FIGURES
 # ══════════════════════════════════════════════════════════════════════
 
-def plot_al(al_cols, ylabel, suptitle, stem,
-            nominal=0.95, methods=None):
+def plot_al(al_cols, ylabel, suptitle, stem, nominal=0.95, methods=None):
     if methods is None:
         methods = list(al_cols.keys())
 
     sub = df[df["nominal"] == nominal].copy()
 
-    fig, axes = plt.subplots(
-        1, 3,
-        figsize=(6.5, 2.8),
-        sharey=False,
-    )
-    fig.subplots_adjust(
-        left=0.11, right=0.97,
-        bottom=0.18,
-        top=0.82,
-        wspace=0.32,
-    )
+    fig, axes = plt.subplots(1, 3, figsize=(6.5, 2.8), sharey=False)
+    fig.subplots_adjust(left=0.11, right=0.97,
+                        bottom=0.18, top=0.82, wspace=0.32)
 
     for ax, sc in zip(axes, SCENARIOS_NUM):
         dsc = sub[sub["scenario"] == sc].sort_values("n")
@@ -424,11 +364,8 @@ def plot_al(al_cols, ylabel, suptitle, stem,
         ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=5, prune="both"))
 
     axes[0].set_ylabel(ylabel)
-    axes[0].legend(
-        handles=_legend_handles(methods),
-        loc="upper right",
-        fontsize=7.5,
-    )
+    axes[0].legend(handles=_legend_handles(methods),
+                   loc="upper right", fontsize=7.5)
     fig.suptitle(suptitle, x=0.535, y=0.97, fontsize=10)
     _save(fig, stem)
 
@@ -441,18 +378,10 @@ def plot_all_nominals(cp_cols, param_label, stem, methods=None):
     n_nom    = len(nominals)
     n_sc     = len(SCENARIOS_NUM)
 
-    fig, axes = plt.subplots(
-        n_nom, n_sc,
-        figsize=(6.5, 6.5),
-        sharex=True,
-    )
-    fig.subplots_adjust(
-        left=0.11, right=0.97,
-        bottom=0.12,
-        top=0.90,
-        hspace=0.50,
-        wspace=0.18,
-    )
+    fig, axes = plt.subplots(n_nom, n_sc, figsize=(6.5, 6.5), sharex=True)
+    fig.subplots_adjust(left=0.11, right=0.97,
+                        bottom=0.14, top=0.90,
+                        hspace=0.50, wspace=0.18)
 
     for r, nom in enumerate(nominals):
         sub = df[df["nominal"] == nom]
@@ -472,22 +401,15 @@ def plot_all_nominals(cp_cols, param_label, stem, methods=None):
             if r == 0:
                 ax.set_title(SC_LABELS.get(sc, f"Sc.{sc}"))
             if c == 0:
-                ax.set_ylabel(f"CP (%) — {nom:.0%}", fontsize=8,
-                              labelpad=5)
+                ax.set_ylabel(f"CP (%) — {nom:.0%}", fontsize=8, labelpad=5)
             _finish_ax(ax, NS, ylim=(62, 101))
             if r == n_nom - 1:
                 ax.set_xlabel("Sample size $n$", fontsize=8, labelpad=5)
 
-    fig.legend(
-        handles=_legend_handles(methods),
-        loc="lower center",
-        ncol=len(methods),
-        fontsize=8,
-        framealpha=0.9,
-        edgecolor="0.75",
-        bbox_to_anchor=(0.535, 0.01),
-        handlelength=2.4,
-    )
+    fig.legend(handles=_legend_handles(methods), loc="lower center",
+               ncol=len(methods), fontsize=8,
+               framealpha=0.9, edgecolor="0.75",
+               bbox_to_anchor=(0.535, 0.02), handlelength=2.4)
     fig.suptitle(
         f"Coverage probability — {param_label} — all nominal levels",
         x=0.535, y=0.96, fontsize=10,
@@ -498,8 +420,7 @@ def plot_all_nominals(cp_cols, param_label, stem, methods=None):
 print("\nSupplementary figures:")
 
 plot_al(
-    al_cols={"NA": "al_na_a", "JEL": "al_jel_a",
-             "AJEL": "al_ajel_a", "EJEL": "al_ejel_a"},
+    al_cols={"NA": "al_na_a", "JEL": "al_jel_a", "AJEL": "al_ajel_a"},
     ylabel=r"Average length — $\alpha$",
     suptitle=r"Supplementary S1.  Average interval length for $\alpha$  (95%)",
     stem="fig_jel_alpha_al",
@@ -507,8 +428,7 @@ plot_al(
 )
 
 plot_al(
-    al_cols={"NA": "al_na_b", "JEL": "al_jel_b",
-             "AJEL": "al_ajel_b", "EJEL": "al_ejel_b"},
+    al_cols={"NA": "al_na_b", "JEL": "al_jel_b", "AJEL": "al_ajel_b"},
     ylabel=r"Average length — $\beta$",
     suptitle=r"Supplementary S2.  Average interval length for $\beta$  (95%)",
     stem="fig_jel_beta_al",
@@ -516,7 +436,7 @@ plot_al(
 )
 
 plot_al(
-    al_cols={"NA": "al_na_s", "JEL": "al_jel_s", "AJEL": "al_ajel_s"},
+    al_cols={"NA": "al_na_s", "JEL": "al_jel_s"},
     ylabel=r"Average length — $S(t_0)$",
     suptitle=r"Supplementary S3.  Average interval length for $S(t_0)$  (95%)",
     stem="fig_jel_survival_al",
@@ -524,15 +444,14 @@ plot_al(
 )
 
 plot_all_nominals(
-    cp_cols={"NA": "cp_na_a", "JEL": "cp_jel_a",
-             "AJEL": "cp_ajel_a", "EJEL": "cp_ejel_a"},
+    cp_cols={"NA": "cp_na_a", "JEL": "cp_jel_a", "AJEL": "cp_ajel_a"},
     param_label=r"$\alpha$",
     stem="fig_jel_alpha_cp_all_nominals",
     methods=METHODS,
 )
 
 plot_all_nominals(
-    cp_cols={"NA": "cp_na_s", "JEL": "cp_jel_s", "AJEL": "cp_ajel_s"},
+    cp_cols={"NA": "cp_na_s", "JEL": "cp_jel_s"},
     param_label=r"$S(t_0)$",
     stem="fig_jel_survival_cp_all_nominals",
     methods=SURV_METHODS,
