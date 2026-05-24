@@ -25,18 +25,22 @@
 ## Overview
 
 This repository contains the simulation and real-data analysis code for a paper
-developing Jackknife Empirical Likelihood (JEL), Adjusted JEL (AJEL), and
-Extended JEL (EJEL) confidence intervals for the parameters and survival function
-of the QTEG distribution. The simulation study was conducted on the Georgia State
-University ARCTIC HPC cluster.
+developing Jackknife Empirical Likelihood (JEL) and Adjusted JEL (AJEL)
+confidence intervals for the parameters and survival function of the QTEG
+distribution. The simulation study was conducted on the Georgia State University
+ARCTIC HPC cluster.
+
+**v5 (current):** EJEL removed from all outputs following revision; AJEL removed
+from survival inference (structural over-coverage for bounded functionals at
+small *n*); NA and JEL retained for survival function inference.
 
 ---
 
 ## Repository Structure
 
 ```
-├── QTEG_JEL_Arctic.py          # Main simulation and real-data analysis script
-├── QTEG_JEL_plot_results.py    # Figure generation script (paper + supplementary)
+├── QTEG_JEL_Arctic.py          # Main simulation and real-data analysis script (v5)
+├── QTEG_JEL_plot_results.py    # Figure generation script — paper + supplementary (v5)
 ├── qteg_jel_array.sh           # SLURM job array script for HPC execution
 └── README.md                   # This file
 ```
@@ -61,8 +65,7 @@ pip install numpy scipy pandas matplotlib
 
 ### 1. Run Simulation (HPC / SLURM)
 
-Edit `qteg_jel_array.sh` and replace the placeholder values with your HPC
-account name, username, email, and conda environment name, then submit:
+Submit the 36-block SLURM array job:
 
 ```bash
 sbatch qteg_jel_array.sh
@@ -71,6 +74,7 @@ sbatch qteg_jel_array.sh
 ### 2. Merge Results
 
 After all 36 blocks complete:
+
 ```bash
 python QTEG_JEL_Arctic.py --merge
 ```
@@ -87,7 +91,7 @@ python QTEG_JEL_Arctic.py --realdata
 python QTEG_JEL_plot_results.py
 ```
 
-### 5. Test Run
+### 5. Test Run (20 replications, block 0)
 
 ```bash
 python QTEG_JEL_Arctic.py --test
@@ -99,24 +103,36 @@ python QTEG_JEL_Arctic.py --test
 
 | Feature | Details |
 |---------|---------|
-| Scenarios | 3 hazard regimes |
+| Scenarios | 3 hazard regimes (decreasing, approximately constant, unimodal) |
 | Sample sizes | n = 30, 50, 100, 200 |
 | Nominal levels | 90%, 95%, 99% |
 | Replications | N = 5,000 per configuration |
 | Total blocks | 36 (parallelised via SLURM array) |
+| Methods (α, β) | NA, JEL, AJEL |
+| Methods (S(t₀)) | NA, JEL |
 
 ---
 
 ## Real Datasets
 
-| Dataset | n | Source |
-|---------|---|--------|
-| Bladder cancer remission times | 128 | Lee & Wang (2003) |
-| Boeing 720 air conditioning failures | 213 | Proschan (1963) |
-| Malignant melanoma survival | 205 | Alizadeh et al. (2017) |
-| Guinea pig survival times | 72 | Bjerkedal (1960) |
+| Dataset | n | t₀ | Source |
+|---------|---|-----|--------|
+| Bladder cancer remission times | 128 | 4.0 months | Lee & Wang (2003) |
+| Boeing 720 air conditioning failures | 213 | 50.0 hours | Proschan (1963) |
+| Malignant melanoma survival | 205 | 1.5 years | Alizadeh et al. (2017) |
+| Guinea pig survival times | 72 | 1.5 years | Bjerkedal (1960) |
 
 All datasets are publicly available from their respective published sources.
+
+---
+
+## Methods Summary
+
+| Method | Parameters | Survival S(t₀) |
+|--------|-----------|----------------|
+| NA (Normal Approximation) | ✓ | ✓ (logit-transformed delta method) |
+| JEL (Jackknife EL) | ✓ | ✓ |
+| AJEL (Adjusted JEL) | ✓ | — (structural over-coverage at small n) |
 
 ---
 
@@ -146,6 +162,7 @@ Department of Mathematics and Statistics, Georgia State University, Atlanta, GA
 ---
 
 ## License
+
 This code is made available for academic and research purposes.  
 MIT License — see [LICENSE](LICENSE) file for details.  
 © 2026 Taiwo Michael Ayeni and Yichuan Zhao, Georgia State University.
