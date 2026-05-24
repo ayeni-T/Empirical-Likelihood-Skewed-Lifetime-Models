@@ -30,10 +30,6 @@ confidence intervals for the parameters and survival function of the QTEG
 distribution. The simulation study was conducted on the Georgia State University
 ARCTIC HPC cluster.
 
-**v5 (current):** EJEL removed from all outputs following revision; AJEL removed
-from survival inference (structural over-coverage for bounded functionals at
-small *n*); NA and JEL retained for survival function inference.
-
 ---
 
 ## Repository Structure
